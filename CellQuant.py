@@ -3,13 +3,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import os
+import glob
 
 ##function that finds center point of each nucleus given a nuclear mask tif file
-def NucPos(mask_dir):
-
-    ##get masks
-    #build path
-    NucMask_path = str(mask_dir+"/nuc_mask.tif")
+def NucPos(NucMask_path):
 
     #load masks
     if os.path.isfile(NucMask_path):
@@ -24,7 +21,6 @@ def NucPos(mask_dir):
     # find the center point of each nucleus
     X = []
     Y = []
-    NucID = []
 
     UNUC = np.unique(NucMask)[1:]
     # Define funtion that rapidly gets all indicies
@@ -40,18 +36,17 @@ def NucPos(mask_dir):
         y, x = indicies[nuc]
         #y, x = np.where(NucMask == nuc)
         X.append(np.mean(x))
-        Y.append(np.mean(y))
-        NucID.append(nuc)
+        Y.append(1-np.mean(y))
 
     # export data
-    NucID = np.array(NucID).reshape((len(NucID),1))
     X = np.array(X).reshape((len(X),1))
     Y = np.array(Y).reshape((len(Y),1))
 
-    NucDat = np.hstack((NucID,X,Y))
-    NucDat = pd.DataFrame(NucDat, columns = ['nucID','X','Y'])
-    outpath = str(mask_dir+"/nuc_quant.csv")
-    NucDat.to_csv(outpath)
+    NucDat = np.hstack((X,Y))
+    NucDat = pd.DataFrame(NucDat, columns = ['X','Y'])
+    outpath =  NucMask_path.split('_nuc_mask.tif')[0]
+    outpath = str(outpath+'_Cellxy.csv')
+    NucDat.to_csv(outpath,index=False)
 
 
 
@@ -76,7 +71,6 @@ def CytoQuant(mask_dir):
         exit()
 
     #get intensities in cytoplasm
-    if os.path.isfile(CytoMask_path):
     UCYTO = np.unique(CytoMask)[1:]
 
     cyto_sumInt = []
@@ -101,17 +95,49 @@ def CytoQuant(mask_dir):
     CytoDat = np.hstack((CytoID,cyto_sumInt,cyto_meanInt))
     CytoDat = pd.DataFrame(CytoDat, columns = ['cytoID','cyto_sumInt','cyto_meanInt'])
     outpath = str(mask_dir+"/cyto_quant.csv")
-    CytoDat.to_csv(outpath)
+    CytoDat.to_csv(outpath,index=False)
+
+
+#Test what the a radius looks like in your pyplot
+
+def TestRad(path,radius_um,objective):
+    #set up parameters
+    print("Density functions assumes images are from the Shaffer Lab Scope with 2x2 binning, if not using this scope edit the RESOLUTIONS dictionary in this funtion with the correct um/pixel values for each objective")
+    RESOLUTIONS = {'10x':1.29, '10X':1.29,'20x':.65,'20X':.65}
+    resolution = RESOLUTIONS[objective]
+    radius_pixel = radius_um/resolution
+
+    # get all the xy files for a plate
+    well = np.genfromtxt(path, delimiter=',', skip_header= 1)
+
+    #set outpath
+    outpath =  path.split('_Cellxy.csv')[0]
+    outpath = str(outpath+'_Radius_test.png')
+
+    #plot
+    fig, ax = plt.subplots(figsize=(15,15))
+    ax.scatter(well[:,0],well[:,1], s=1)
+    cir = plt.Circle((np.mean(well[:,0]), np.mean(well[:,1])), radius_pixel, color='r',fill=True)
+    ax.set_aspect('equal')
+    ax.add_patch(cir)
+    plt.savefig(outpath, dpi=300)
+    plt.close()
 
 
 
 
 #Determine how densly packed cells are in each wellId
 #path is the path to a folder containing files with x and y coordinates of nuclei in file called Cellxy_*.csv radius is the number of pixes around that cell to look for cells (CHANGE TO DISTANCE BASED ON OBJECTIVE)
-def DensityQuant(path,radius):
+def DensityQuant(path,radius_um,objective):
+
+    #set up parameters
+    print("Density functions assumes images are from the Shaffer Lab Scope with 2x2 binning, if not using this scope edit the RESOLUTIONS dictionary in this funtion with the correct um/pixel values for each objective")
+    RESOLUTIONS = {'10x':1.29, '10X':1.29,'20x':.65,'20X':.65}
+    resolution = RESOLUTIONS[objective]
+    radius_pixel = radius_um/resolution
 
     # get all the xy files for a plate
-    FILES = glob.glob(path + "/Cellxy_*.csv")
+    FILES = glob.glob(path + "/*_Cellxy.csv")
     WELLS=[]
 
     for file in FILES:
@@ -138,14 +164,14 @@ def DensityQuant(path,radius):
             # in radius is  a list containing the number of surounding cells for each cell
             inRadius.append(0)
             #get range of pixels surounding cells
-            subsetter = np.where((well[:,0]>(xcenter-radius)) & (well[:,0] < (xcenter+radius)) & (well[:,1]>(ycenter-radius)) & (well[:,1] < (ycenter+radius)))
+            subsetter = np.where((well[:,0]>(xcenter-radius_pixel)) & (well[:,0] < (xcenter+radius_pixel)) & (well[:,1]>(ycenter-radius_pixel)) & (well[:,1] < (ycenter+radius_pixel)))
             wellSubset = well[subsetter]
 
             #determine how many cells are within the set radius around each cell
             for j in range(len(wellSubset)):
                 xcurrent = wellSubset[j][0]
                 ycurrent = wellSubset[j][1]
-                if ((xcurrent - xcenter)**2 + (ycurrent - ycenter)**2) < radius**2:
+                if ((xcurrent - xcenter)**2 + (ycurrent - ycenter)**2) < radius_pixel**2:
                     inRadius[i] +=1
 
         #convert inRadius to numpy array
@@ -153,6 +179,18 @@ def DensityQuant(path,radius):
 
         # since cell is counting itself, remove 1 from each element in inRadius
         inRadius = inRadius-1
+
+        #create file with single cell information
+        X = WELLS[w][:,0].reshape((len(WELLS[w][:,0]),1))
+        Y = WELLS[w][:,1].reshape((len(WELLS[w][:,1]),1))
+        inRadius = inRadius.reshape((len(inRadius),1))
+
+
+        scDensDat = np.hstack((X,Y,inRadius))
+        scDensDat = pd.DataFrame(scDensDat, columns = ['X','Y',str('cellsIn'+str(radius_um)+'umRadius')])
+        scoutpath =  FILES[w].split('_Cellxy.csv')[0]
+        scoutpath = str(scoutpath+'_SingleCellDensity.csv')
+        scDensDat.to_csv(scoutpath,index=False)
 
         #append wellId mean and median
         WellID.append(str("well" + str(w)))
@@ -166,10 +204,31 @@ def DensityQuant(path,radius):
 
     DensDat = np.hstack((WellID,Means,Medians))
     DensDat = pd.DataFrame(DensDat, columns = ['WellID','Mean','Median'])
-    outpath = str(path+"/density.csv")
-    DensDat.to_csv(outpath)
+    outpath = str(path+'/WholeWellDensities.csv')
+    DensDat.to_csv(outpath, index=False)
 
 
+
+
+#plot Densities to check if they look correct
+def PlotDensity(path):
+    #import data
+    dat = np.genfromtxt(path, delimiter=',', skip_header= 1)
+    X = dat[:,0]
+    Y = dat[:,1]
+    density = dat[:,2]
+
+    #set outpath
+    outpath =  path.split('_SingleCellDensity.csv')[0]
+    outpath = str(outpath + '_DensityPlot.png')
+
+    #plot
+    fig, ax = plt.subplots(figsize=(15, 15))
+    sc = plt.scatter(X,Y, c=density, cmap="seismic", s=1)
+    ax.set_aspect('equal')
+    plt.colorbar(sc)
+    plt.savefig(outpath,dpi=300)
+    plt.close()
 
 
     #need to add funtion for nuclear intensity as well as get nuclear to cytoplasm intensity ratio
