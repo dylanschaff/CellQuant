@@ -12,8 +12,6 @@ def NucPos(NucMask_path):
     if os.path.isfile(NucMask_path):
         NucMask = Image.open(NucMask_path)
         NucMask = np.array(NucMask)
-        #get dimension of y axis
-        dim_y = NucMask.shape[0]
     else:
         print("No Nuclear Mask")
         exit()
@@ -54,18 +52,18 @@ def NucPos(NucMask_path):
 
 
 ##function that quantifies intensity withing the cytoplasm mask provided by
-def CytoQuant(mask_dir):
-    CytoMask_path = str(mask_dir+"/cyto_mask.tif")
-    CytoRaw_path = str(mask_dir+"/raw_cytoplasm.tif")
+def CytoQuant(CytoMask_path,cytoChannel):
+    splitpath=CytoMask_path.split("_cyto_mask")
+    CytoRaw_path = str(splitpath[0]+splitpath[1])
 
     if os.path.isfile(CytoMask_path):
         CytoMask = Image.open(CytoMask_path)
         CytoMask = np.array(CytoMask)
 
-        dim_y = CytoMask.shape[0]
-
         CytoRaw = Image.open(CytoRaw_path)
-        CytoRaw  = np.array(CytoRaw)
+        cytoChannel = cytoChannel-1
+        CytoRaw.seek(cytoChannel)
+        CytoRaw = np.array(CytoRaw)
     else:
         print("No Cytoplasm Mask")
         exit()
@@ -94,7 +92,8 @@ def CytoQuant(mask_dir):
 
     CytoDat = np.hstack((CytoID,cyto_sumInt,cyto_meanInt))
     CytoDat = pd.DataFrame(CytoDat, columns = ['cytoID','cyto_sumInt','cyto_meanInt'])
-    outpath = str(mask_dir+"/cyto_quant.csv")
+    outpath =  CytoMask_path.split('_cyto_mask.tif')[0]
+    outpath = str(outpath+'_cyto_quant.csv')
     CytoDat.to_csv(outpath,index=False)
 
 
