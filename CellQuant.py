@@ -52,49 +52,57 @@ def NucPos(NucMask_path):
 
 
 ##function that quantifies intensity withing the cytoplasm mask provided by
-def CytoQuant(CytoMask_path,cytoChannel):
-    splitpath=CytoMask_path.split("_cyto_mask")
-    CytoRaw_path = str(splitpath[0]+splitpath[1])
+def MaskQuant(Image_path,Mask_path,CHANNELS):
 
-    if os.path.isfile(CytoMask_path):
-        CytoMask = Image.open(CytoMask_path)
-        CytoMask = np.array(CytoMask)
+    #load images and set up variables
+    AllMask = tifffile.imread(Mask_path)[0,...,0]
+    AllMask = np.array(AllMask)
+    RawIm = tifffile.imread(Image_path)
+    CHANNELS = np.array(CHANNELS)-1
+    UMASK = np.unique(AllMask)[1:]
 
-        CytoRaw = Image.open(CytoRaw_path)
-        cytoChannel = cytoChannel-1
-        CytoRaw.seek(cytoChannel)
-        CytoRaw = np.array(CytoRaw)
-    else:
-        print("No Cytoplasm Mask")
-        exit()
+    #get sum and mean intensity within each mask for all channels specified
+    All_sumInt = []
+    All_meanInt = []
 
-    #get intensities in cytoplasm
-    UCYTO = np.unique(CytoMask)[1:]
+    for channel in CHANNELS:
+        cIm = RawIm[channel,...]
 
-    cyto_sumInt = []
-    cyto_meanInt = []
-    CytoID = []
+        MaskID = []
 
-    for cyto in UCYTO:
-        allpix = CytoRaw[CytoMask == cyto]
-        cyto_sumInt.append(np.sum(allpix))
-        cyto_meanInt.append(np.mean(allpix))
-        CytoID.append(cyto)
+        tmp_sumInt = []
+        tmp_meanInt = []
 
-    #reshape data
-    cyto_sumInt = np.array(cyto_sumInt).reshape((len(cyto_sumInt),1))
-    cyto_meanInt = np.array(cyto_meanInt).reshape((len(cyto_meanInt),1))
+        for mask in UMASK:
+            allpix = cIm[AllMask == mask]
+            tmp_sumInt.append(np.sum(allpix))
+            tmp_meanInt.append(np.mean(allpix))
+            MaskID.append(mask)
+        All_sumInt.append(tmp_sumInt)
+        All_meanInt.append(tmp_sumInt)
 
+    #put data into data frames
+    sum_dfnames = []
+    mean_dfnames = []
+    for channel in range(0,len(CHANNELS)):
+        All_sumInt[channel] = np.array(All_sumInt[channel])
+        All_meanInt[channel] = np.array(All_meanInt[channel])
 
-    CytoID = np.array(CytoID).reshape((len(CytoID),1))
-    cyto_sumInt = np.array(cyto_sumInt).reshape((len(cyto_sumInt),1))
-    cyto_meanInt = np.array(cyto_meanInt).reshape((len(cyto_meanInt),1))
+        sum_dfnames.append(str("sum_Channel"+str(CHANNELS[channel]+1)))
+        mean_dfnames.append(str("mean_Channel"+str(CHANNELS[channel]+1)))
 
-    CytoDat = np.hstack((CytoID,cyto_sumInt,cyto_meanInt))
-    CytoDat = pd.DataFrame(CytoDat, columns = ['cytoID','cyto_sumInt','cyto_meanInt'])
-    outpath =  CytoMask_path.split('_cyto_mask.tif')[0]
+    All_sumInt = pd.DataFrame(data=All_sumInt, index= sum_dfnames).T
+
+    All_meanInt = pd.DataFrame(data=All_meanInt, index= mean_dfnames).T
+
+    Alldat = pd.concat([All_meanInt, All_sumInt], axis=1)
+
+    Alldat.insert(0, "MaskID", MaskID)
+
+    #save data
     outpath = str(outpath+'_cyto_quant.csv')
-    CytoDat.to_csv(outpath,index=False)
+    Alldat.to_csv(outpath,index=False)
+    return Alldat
 
 
 #Test what the a radius looks like in your pyplot
