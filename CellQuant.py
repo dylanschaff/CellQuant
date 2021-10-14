@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import os
 import glob
+import tifffile
 
 ##function that finds center point of each nucleus given a nuclear mask tif file
 def NucPos(NucMask_path):
@@ -100,7 +101,8 @@ def MaskQuant(Image_path,Mask_path,CHANNELS):
     Alldat.insert(0, "MaskID", MaskID)
 
     #save data
-    outpath = str(outpath+'_cyto_quant.csv')
+    outpath = Mask_path.split('_mask.tif')[0]
+    outpath = str(outpath+'_quant.csv')
     Alldat.to_csv(outpath,index=False)
     return Alldat
 
