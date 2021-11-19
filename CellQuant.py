@@ -12,7 +12,7 @@ from skimage import measure
 
 # This function plots an outline of the mask onto the image to check how well the mask is capturing objects of interest
 #code for finding the outline take from Cellori (https://github.com/SydShafferLab/Cellori)
-def MaskCheck(img_path, mask_path, channel, min_brightness):
+def MaskCheck(img_path, mask_path, channel=1, min_brightness=.15):
 
     #load mask
     mask=tifffile.imread(mask_path)
