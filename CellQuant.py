@@ -5,6 +5,121 @@ import pandas as pd
 import os
 import glob
 import tifffile
+import cv2 as cv
+from skimage import measure
+
+
+
+# This function plots an outline of the mask onto the image to check how well the mask is capturing objects of interest
+#code for finding the outline take from Cellori (https://github.com/SydShafferLab/Cellori)
+def MaskCheck(img_path,mask_path, min_brightness = .15):
+
+    #load mask
+    mask=tifffile.imread(mask_path)
+    mask = mask[0,...,0]
+
+    #load image
+    image = tifffile.imread(img_path)
+    image = image[0,...]
+
+    #normalize tiff image
+    norm_image = cv.normalize(image, dst=None, alpha=0, beta=255, norm_type=cv.NORM_MINMAX)
+
+    # brighten up image if necessary (code taken from: https://stackoverflow.com/questions/57030125/automatically-adjusting-brightness-of-image-with-opencv)
+    cols, rows = norm_image.shape
+    brightness = np.sum(norm_image) / (255 * cols * rows)
+
+    ratio = brightness / min_brightness
+    if ratio >= 1:
+        pass
+    else:
+        # Otherwise, adjust brightness to get the target brightness
+        scale_norm_image = cv.convertScaleAbs(norm_image, alpha = 1 / ratio, beta = 0)
+
+    #convert scaled gray scale image to color
+    col_scale_norm_image = cv.cvtColor(scale_norm_image, cv.COLOR_GRAY2BGR)
+
+    #convert mask to outline( Code from: https://github.com/SydShafferLab/Cellori)
+    REGIONS = measure.regionprops(mask,cache=False)
+
+    outlines = np.zeros(mask.shape,dtype=bool)
+
+    for region in REGIONS:
+        c_mask = region.image.astype(np.uint8)
+        contours = cv.findContours(c_mask,cv.RETR_EXTERNAL,cv.CHAIN_APPROX_NONE)
+        contours = np.concatenate(contours[0],axis=0).squeeze().T
+        outlines[contours[1] + region.slice[0].start,contours[0] + region.slice[1].start] = 1
+
+    # add mask to gray scale image
+    #mask color
+    color = [0, 0, 255]
+    #transparency of mask
+    alpha = 1
+
+    #determine index where you want the mask
+    mask_ind=np.where(outlines > 0)
+    out = col_scale_norm_image.copy()
+    img_layer = col_scale_norm_image.copy()
+    img_layer[mask_ind] = color
+
+    out = cv.addWeighted(img_layer, alpha, out, 1 - alpha, 0, out)
+
+    #load mask
+    mask=tifffile.imread(mask_path)
+    mask = mask[0,...,0]
+
+    #load image
+    image = tifffile.imread(img_path)
+    image = image[0,...]
+
+    #normalize tiff image
+    norm_image = cv.normalize(image, dst=None, alpha=0, beta=255, norm_type=cv.NORM_MINMAX)
+
+    # brighten up image if necessary (code taken from: https://stackoverflow.com/questions/57030125/automatically-adjusting-brightness-of-image-with-opencv)
+    cols, rows = norm_image.shape
+    brightness = np.sum(norm_image) / (255 * cols * rows)
+
+    ratio = brightness / min_brightness
+    if ratio >= 1:
+        pass
+    else:
+        # Otherwise, adjust brightness to get the target brightness
+        scale_norm_image = cv.convertScaleAbs(norm_image, alpha = 1 / ratio, beta = 0)
+
+    #convert scaled gray scale image to color
+    col_scale_norm_image = cv.cvtColor(scale_norm_image, cv.COLOR_GRAY2BGR)
+
+    #convert mask to outline( Code from: https://github.com/SydShafferLab/Cellori)
+    REGIONS = measure.regionprops(mask,cache=False)
+
+    outlines = np.zeros(mask.shape,dtype=bool)
+
+    for region in REGIONS:
+        c_mask = region.image.astype(np.uint8)
+        contours = cv.findContours(c_mask,cv.RETR_EXTERNAL,cv.CHAIN_APPROX_NONE)
+        contours = np.concatenate(contours[0],axis=0).squeeze().T
+        outlines[contours[1] + region.slice[0].start,contours[0] + region.slice[1].start] = 1
+
+    # add mask to gray scale image
+    #mask color
+    color = [0, 0, 255]
+    #transparency of mask
+    alpha = 1
+
+    #determine index where you want the mask
+    mask_ind=np.where(outlines > 0)
+    out = col_scale_norm_image.copy()
+    img_layer = col_scale_norm_image.copy()
+    img_layer[mask_ind] = color
+
+    out = cv.addWeighted(img_layer, alpha, out, 1 - alpha, 0, out)
+
+    # write image with mask in directory of image file
+    outdir = (img_path.split('.tif')[0]+'_IMGoverlay.jpg')
+    cv.imwrite(outdir,out)
+
+
+
 
 ##function that finds center point of each nucleus given a nuclear mask tif file
 def NucPos(NucMask_path):
