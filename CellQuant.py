@@ -16,11 +16,24 @@ def MaskCheck(img_path, mask_path, channel=1, min_brightness=.15):
 
     #load mask
     mask=tifffile.imread(mask_path)
-    mask = mask[0,...,0]
+
+    if len(mask.shape) == 2:
+        mask = mask
+    elif len(mask.shape) == 3:
+        mask = mask[0,...]
+    elif len(mask.shape) == 4:
+        mask = mask[0,...,0]
+    else:
+        print("mask has unsupported dimensions")
+
 
     #load image
     image = tifffile.imread(img_path)
-    image = image[channel-1,...]
+    imgShape = len(image.shape)
+    if imgShape == 2:
+        pass
+    else:
+        image = image[channel-1,...]
 
     #normalize tiff image
     norm_image = cv.normalize(image, dst=None, alpha=0, beta=255, norm_type=cv.NORM_MINMAX)
@@ -31,13 +44,13 @@ def MaskCheck(img_path, mask_path, channel=1, min_brightness=.15):
 
     ratio = brightness / min_brightness
     if ratio >= 1:
-        pass
+        print("no Scale")
     else:
         # Otherwise, adjust brightness to get the target brightness
-        scale_norm_image = cv.convertScaleAbs(norm_image, alpha = 1 / ratio, beta = 0)
+        norm_image = cv.convertScaleAbs(norm_image, alpha = 1 / ratio, beta = 0)
 
     #convert scaled gray scale image to color
-    col_scale_norm_image = cv.cvtColor(scale_norm_image, cv.COLOR_GRAY2BGR)
+    col_norm_image = cv.cvtColor(norm_image, cv.COLOR_GRAY2BGR)
 
     #convert mask to outline( Code from: https://github.com/SydShafferLab/Cellori)
     REGIONS = measure.regionprops(mask,cache=False)
@@ -58,8 +71,8 @@ def MaskCheck(img_path, mask_path, channel=1, min_brightness=.15):
 
     #determine index where you want the mask
     mask_ind=np.where(outlines > 0)
-    out = col_scale_norm_image.copy()
-    img_layer = col_scale_norm_image.copy()
+    out = col_norm_image.copy()
+    img_layer = col_norm_image.copy()
     img_layer[mask_ind] = color
 
     out = cv.addWeighted(img_layer, alpha, out, 1 - alpha, 0, out)
