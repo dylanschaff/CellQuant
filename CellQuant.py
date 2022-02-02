@@ -20,7 +20,7 @@ def MaskCheck(img_path, mask_path, channel=1, min_brightness=.15):
     if len(mask.shape) == 2:
         mask = mask
     elif len(mask.shape) == 3:
-        mask = mask[0,...]
+        mask = mask[...,0]
     elif len(mask.shape) == 4:
         mask = mask[0,...,0]
     else:
