@@ -89,8 +89,7 @@ def NucPos(NucMask_path):
 
     #load masks
     if os.path.isfile(NucMask_path):
-        NucMask = Image.open(NucMask_path)
-        NucMask = np.array(NucMask)
+        NucMask = tifffile.imread(NucMask_path)
     else:
         print("No Nuclear Mask")
         exit()
@@ -124,6 +123,7 @@ def NucPos(NucMask_path):
     outpath =  NucMask_path.split('_nuc_mask.tif')[0]
     outpath = str(outpath+'_Cellxy.csv')
     NucDat.to_csv(outpath,index=False)
+    return(NucDat)
 
 
 
@@ -158,7 +158,7 @@ def MaskQuant(Image_path,Mask_path,CHANNELS):
             tmp_meanInt.append(np.mean(allpix))
             MaskID.append(mask)
         All_sumInt.append(tmp_sumInt)
-        All_meanInt.append(tmp_sumInt)
+        All_meanInt.append(tmp_meanInt)
 
     #put data into data frames
     sum_dfnames = []
@@ -318,15 +318,161 @@ def PlotDensity(path):
     plt.close()
 
 
-    #need to add funtion for nuclear intensity as well as get nuclear to cytoplasm intensity ratio
+## Functions created by Shivani Nellore
 
+#create a ring around the nucleaus to be used as a proxy for a cytoplasm mask
+def makeCytoMask(nucPath):
+    # read in nuc mask
+    nucMaskArray = tifffile.imread(nucPath)[0,...,0]
+    nucMaskArray = nucMaskArray.astype("float32")
 
-    ## Filter out and split up cytoplasms
-    #Remove cytoplasms that had no nuclei
-    #for mask in UCYTO:
-    #    mask_num = NucMask[CytoMask == mask]
-    #    if np.mean(mask_num) <= 0:
-    #        CytoMask[CytoMask == mask] = 0
-        #    print("removed cytoplasm mask", mask, "because it had no nucleus")
+    # create kernel -- increase kernel size, increases the dilation magnitude
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(10,10))
 
-    #split cytoplasms that have multiple nuclei
+    # create an dilation plot from the nuclear mask
+    dn = cv2.dilate(nucMaskArray, kernel)
+
+    # save dilation plot
+    dilatePath = nucPath.split('_nuc_mask.tif')[0]
+    dilatePath = str(dilatePath+'_dilated.tif')
+    cv2.imwrite(dilatePath, dn)
+
+    # Load the dilation and Nuc masks and their pixel maps
+    input_imageD = Image.open(dilatePath)
+    input_imageN = Image.open(nucPath)
+    pixel_mapDil = input_imageD.load()
+    pixel_mapNuc = input_imageN.load()
+
+    # create new image mask using dilation mask perimeters
+    img = Image.new(input_imageD.mode, input_imageD.size)
+    pixelsNew = img.load()
+
+    # get the pixel width and heigh of the of the dilation image:
+    width, height = input_imageD.size
+
+    # for all non 0 pixels of Nuc Mask, make black in dilated image and load to new mask
+    for i in range(width):
+        for j in range(height):
+            if(pixel_mapNuc[i,j] != 0):
+                pixelsNew[i,j] = (0)
+            else:
+                pixelsNew[i,j] = (pixel_mapDil[i,j])
+
+    # Save and show new cyto mask
+    cytoPath = nucPath.split('_nuc_mask.tif')[0]
+    cytoPath = str(cytoPath+'_cyto_mask.tif')
+    img.save(cytoPath)
+    plt.imshow(img)
+    return cytoPath
+
+#calculate the cytoplasm to nuclear ratio
+    def CytoNucRatios(Image_path, Mask_path_Nuc, Mask_path_cyto,CHANNELS):
+    # read in Nuc Mask
+    AllMaskNuc=tifffile.imread(Mask_path_Nuc)
+
+    if len(AllMaskNuc.shape) == 2:
+        AllMaskNuc = AllMaskNuc
+    elif len(AllMaskNuc.shape) == 3:
+        AllMaskNuc = AllMaskNuc[0,...]
+    elif len(AllMaskNuc.shape) == 4:
+        AllMaskNuc = AllMaskNuc[0,...,0]
+    else:
+        print("mask has unsupported dimensions")
+    AllMaskNuc = np.array(AllMaskNuc)
+
+    # read in Cyto Mask
+    AllMaskCyto = np.array(AllMaskCyto)
+
+    #read in raw image mask
+    RawIm = tifffile.imread(Image_path)
+
+    # UMASKNuc = np.unique(AllMaskNuc)[1:] ==> don't need because cyto will be smaller
+    UMASKCyto = np.unique(AllMaskCyto)[1:]
+
+    #get sum and mean intensity within each mask for all channels specified
+    All_sumRatio = []
+    All_meanRatio = []
+
+    if CHANNELS != 1:
+        for channel in CHANNELS:
+            cIm = RawIm[channel,...]
+
+            allpixTotalNuc = cIm[AllMaskNuc != 0]
+            allMaskTotalNuc = AllMaskNuc[AllMaskNuc != 0]
+
+            allpixTotalCyto = cIm[AllMaskCyto != 0]
+            allMaskTotalCyto = AllMaskCyto[AllMaskCyto != 0]
+
+            MaskID = []
+
+            tmp_sumRatio = []
+            tmp_meanRatio = []
+
+            mask = 1
+            # for mask in UMASK:
+            for mask in UMASKCyto:
+                allpixNuc = allpixTotalNuc[allMaskTotalNuc == mask]
+                allpixCyto = allpixTotalCyto[allMaskTotalCyto == mask]
+                sumRatio = np.sum(allpixCyto)/np.sum(allpixNuc)
+                meanRatio = np.mean(allpixCyto)/np.mean(allpixNuc)
+                tmp_sumRatio.append(sumRatio)
+                tmp_meanRatio.append(meanRatio)
+                MaskID.append(mask)
+                mask += 1
+
+            All_sumRatio.append(tmp_sumRatio)
+            All_meanRatio.append(tmp_meanRatio)
+    else:
+        channel = 1
+        cIm = RawIm[channel,...]
+        MaskID = []
+
+        allpixTotalNuc = cIm[AllMaskNuc != 0]
+        allMaskTotalNuc = AllMaskNuc[AllMaskNuc != 0]
+
+        allpixTotalCyto = cIm[AllMaskCyto != 0]
+        allMaskTotalCyto = AllMaskCyto[AllMaskCyto != 0]
+        print(allMaskTotalCyto)
+
+        tmp_sumRatio = []
+        tmp_meanRatio = []
+
+        mask = 1
+        # for mask in UMASK:
+        for mask in UMASKCyto:
+            allpixNuc = allpixTotalNuc[allMaskTotalNuc == mask]
+            allpixCyto = allpixTotalCyto[allMaskTotalCyto == mask]
+            sumRatio = np.sum(allpixCyto)/np.sum(allpixNuc)
+            meanRatio = np.mean(allpixCyto)/np.mean(allpixNuc)
+            tmp_sumRatio.append(sumRatio)
+            tmp_meanRatio.append(meanRatio)
+            MaskID.append(mask)
+            mask += 1
+            #print(time.time())
+
+        All_sumRatio.append(tmp_sumRatio)
+        All_meanRatio.append(tmp_meanRatio)
+
+    #put data into data frames
+    sum_dfnames = []
+    mean_dfnames = []
+    for channel in range(0,CHANNELS):
+        All_sumRatio[channel] = np.array(All_sumRatio[channel])
+        All_meanRatio[channel] = np.array(All_meanRatio[channel])
+
+        sum_dfnames.append(str("sum_Channel"+str(channel+1)))
+        mean_dfnames.append(str("mean_Channel"+str(channel+1)))
+
+    All_sumRatio = pd.DataFrame(data=All_sumRatio, index= sum_dfnames).T
+
+    All_meanRatio = pd.DataFrame(data=All_meanRatio, index= mean_dfnames).T
+
+    Alldat = pd.concat([All_meanRatio, All_sumRatio], axis=1)
+
+    Alldat.insert(0, "MaskID", MaskID)
+
+    #save data
+    outpath = Mask_path_Nuc.split('_mask.tif')[0]
+    outpath = str(outpath+'_CytoToNucratios.csv')
+    Alldat.to_csv(outpath,index=False)
+    return Alldat
