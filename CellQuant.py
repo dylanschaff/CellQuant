@@ -84,21 +84,21 @@ def MaskCheck(img_path, mask_path, channel=1, min_brightness=.15):
 
 
 
-##function that finds center point of each nucleus given a nuclear mask tif file
-def NucPos(NucMask_path):
+##function that finds center point of each mask given a mask tif file
+def MaskPos(Mask_path):
 
     #load masks
-    if os.path.isfile(NucMask_path):
-        NucMask = tifffile.imread(NucMask_path)
+    if os.path.isfile(Mask_path):
+        Mask = tifffile.imread(Mask_path)
     else:
-        print("No Nuclear Mask")
+        print("No Mask")
         exit()
 
     # find the center point of each nucleus
     X = []
     Y = []
 
-    UNUC = np.unique(NucMask)[1:]
+    UMASK = np.unique(Mask)[1:]
     # Define funtion that rapidly gets all indicies
     def get_indices_pandas(data):
         d = data.ravel()
@@ -106,10 +106,10 @@ def NucPos(NucMask_path):
         return pd.Series(d).groupby(d).apply(f)
 
     #get all indicies of nuclei
-    indicies = get_indices_pandas(NucMask)
+    indicies = get_indices_pandas(Mask)
 
-    for nuc in UNUC:
-        y, x = indicies[nuc]
+    for msk in UMASK:
+        y, x = indicies[msk]
         #y, x = np.where(NucMask == nuc)
         X.append(np.mean(x))
         Y.append(1-np.mean(y))
@@ -118,23 +118,18 @@ def NucPos(NucMask_path):
     X = np.array(X).reshape((len(X),1))
     Y = np.array(Y).reshape((len(Y),1))
 
-    NucDat = np.hstack((X,Y))
-    NucDat = pd.DataFrame(NucDat, columns = ['X','Y'])
-    outpath =  NucMask_path.split('_nuc_mask.tif')[0]
+    MaskDat = np.hstack((X,Y))
+    MaskDat = pd.DataFrame(MaskDat, columns = ['X','Y'])
+    outpath =  Mask_path.split('_mask.tif')[0]
     outpath = str(outpath+'_Cellxy.csv')
-    NucDat.to_csv(outpath,index=False)
-    return(NucDat)
-
-
-
-
-
+    MaskDat.to_csv(outpath,index=False)
+    return(MaskDat)
 
 ##function that quantifies intensity withing the cytoplasm mask provided by
 def MaskQuant(Image_path,Mask_path,CHANNELS):
 
     #load images and set up variables
-    AllMask = tifffile.imread(Mask_path)[0,...,0]
+    AllMask = tifffile.imread(Mask_path)
     AllMask = np.array(AllMask)
     RawIm = tifffile.imread(Image_path)
     CHANNELS = np.array(CHANNELS)-1
@@ -146,14 +141,15 @@ def MaskQuant(Image_path,Mask_path,CHANNELS):
 
     for channel in CHANNELS:
         cIm = RawIm[channel,...]
-
+        sub_cIm = cIm[AllMask != 0]
+        sub_AllMask = AllMask[AllMask != 0]
         MaskID = []
 
         tmp_sumInt = []
         tmp_meanInt = []
 
         for mask in UMASK:
-            allpix = cIm[AllMask == mask]
+            allpix = sub_cIm[sub_AllMask == mask]
             tmp_sumInt.append(np.sum(allpix))
             tmp_meanInt.append(np.mean(allpix))
             MaskID.append(mask)
@@ -366,109 +362,131 @@ def makeCytoMask(nucPath):
     return cytoPath
 
 #calculate the cytoplasm to nuclear ratio
-    def CytoNucRatios(Image_path, Mask_path_Nuc, Mask_path_cyto,CHANNELS):
+def CytoNucRatios(Image_path, Mask_path_Nuc, Mask_path_cyto,CHANNELS):
     # read in Nuc Mask
     AllMaskNuc=tifffile.imread(Mask_path_Nuc)
-
-    if len(AllMaskNuc.shape) == 2:
-        AllMaskNuc = AllMaskNuc
-    elif len(AllMaskNuc.shape) == 3:
-        AllMaskNuc = AllMaskNuc[0,...]
-    elif len(AllMaskNuc.shape) == 4:
-        AllMaskNuc = AllMaskNuc[0,...,0]
-    else:
-        print("mask has unsupported dimensions")
-    AllMaskNuc = np.array(AllMaskNuc)
-
     # read in Cyto Mask
-    AllMaskCyto = np.array(AllMaskCyto)
-
+    AllMaskCyto=tifffile.imread(Mask_path_cyto)
     #read in raw image mask
     RawIm = tifffile.imread(Image_path)
 
-    # UMASKNuc = np.unique(AllMaskNuc)[1:] ==> don't need because cyto will be smaller
-    UMASKCyto = np.unique(AllMaskCyto)[1:]
 
-    #get sum and mean intensity within each mask for all channels specified
-    All_sumRatio = []
-    All_meanRatio = []
 
-    if CHANNELS != 1:
-        for channel in CHANNELS:
-            cIm = RawIm[channel,...]
 
-            allpixTotalNuc = cIm[AllMaskNuc != 0]
-            allMaskTotalNuc = AllMaskNuc[AllMaskNuc != 0]
+    UMASKCyto = np.unique(AllMaskCyto)[1:] #usually less equal or less cyto masks
 
-            allpixTotalCyto = cIm[AllMaskCyto != 0]
-            allMaskTotalCyto = AllMaskCyto[AllMaskCyto != 0]
+    #get mean and median intensity of each cell nucleus and cytoplasm as well as nuclear and cytoplasm size
+    All_nuc_mean = []
+    All_nuc_median = []
+    All_nuc_size = []
+    All_cyto_mean = []
+    All_cyto_median = []
+    All_cyto_size = []
 
-            MaskID = []
+    All_mean_Ratio = []
+    All_median_Ratio = []
 
-            tmp_sumRatio = []
-            tmp_meanRatio = []
+    CHANNELS = np.array(CHANNELS)-1
 
-            mask = 1
-            # for mask in UMASK:
-            for mask in UMASKCyto:
-                allpixNuc = allpixTotalNuc[allMaskTotalNuc == mask]
-                allpixCyto = allpixTotalCyto[allMaskTotalCyto == mask]
-                sumRatio = np.sum(allpixCyto)/np.sum(allpixNuc)
-                meanRatio = np.mean(allpixCyto)/np.mean(allpixNuc)
-                tmp_sumRatio.append(sumRatio)
-                tmp_meanRatio.append(meanRatio)
-                MaskID.append(mask)
-                mask += 1
-
-            All_sumRatio.append(tmp_sumRatio)
-            All_meanRatio.append(tmp_meanRatio)
-    else:
-        channel = 1
+    for channel in CHANNELS:
         cIm = RawIm[channel,...]
+
         MaskID = []
 
-        allpixTotalNuc = cIm[AllMaskNuc != 0]
-        allMaskTotalNuc = AllMaskNuc[AllMaskNuc != 0]
+        #reduce image and mask to only regions with cells
+        sub_cIm_Nuc = cIm[AllMaskNuc != 0]
+        sub_AllMaskNuc = AllMaskNuc[AllMaskNuc != 0]
 
-        allpixTotalCyto = cIm[AllMaskCyto != 0]
-        allMaskTotalCyto = AllMaskCyto[AllMaskCyto != 0]
-        print(allMaskTotalCyto)
+        sub_cIm_Cyto = cIm[AllMaskCyto != 0]
+        sub_AllMaskCyto = AllMaskCyto[AllMaskCyto != 0]
 
-        tmp_sumRatio = []
-        tmp_meanRatio = []
+        tmp_nuc_mean = []
+        tmp_nuc_median = []
+        tmp_nuc_size = []
+        tmp_cyto_mean = []
+        tmp_cyto_median = []
+        tmp_cyto_size = []
 
-        mask = 1
         # for mask in UMASK:
         for mask in UMASKCyto:
-            allpixNuc = allpixTotalNuc[allMaskTotalNuc == mask]
-            allpixCyto = allpixTotalCyto[allMaskTotalCyto == mask]
-            sumRatio = np.sum(allpixCyto)/np.sum(allpixNuc)
-            meanRatio = np.mean(allpixCyto)/np.mean(allpixNuc)
-            tmp_sumRatio.append(sumRatio)
-            tmp_meanRatio.append(meanRatio)
-            MaskID.append(mask)
-            mask += 1
-            #print(time.time())
+            allpixNuc = sub_cIm_Nuc[sub_AllMaskNuc == mask]
+            allpixCyto = sub_cIm_Cyto[sub_AllMaskCyto == mask]
 
-        All_sumRatio.append(tmp_sumRatio)
-        All_meanRatio.append(tmp_meanRatio)
+            tmp_nuc_mean.append(np.mean(allpixNuc))
+            tmp_nuc_median.append(np.median(allpixNuc))
+            tmp_nuc_size.append(len(allpixNuc))
+
+            tmp_cyto_mean.append(np.mean(allpixCyto))
+            tmp_cyto_median.append(np.median(allpixCyto))
+            tmp_cyto_size.append(len(allpixCyto))
+
+            MaskID.append(mask)
+
+
+        All_nuc_mean.append(tmp_nuc_mean)
+        All_nuc_median.append(tmp_nuc_median)
+        All_nuc_size.append(tmp_nuc_size)
+
+        All_cyto_mean.append(tmp_cyto_mean)
+        All_cyto_median.append(tmp_cyto_median)
+        All_cyto_size.append(tmp_cyto_size)
+
+        tmp_mean_Ratiores = [i / j for i, j in zip(tmp_cyto_mean, tmp_nuc_mean)]
+        tmp_median_Ratiores = [i / j for i, j in zip(tmp_cyto_median, tmp_nuc_median)]
+
+        All_mean_Ratio.append(tmp_mean_Ratiores)
+        All_median_Ratio.append(tmp_median_Ratiores)
 
     #put data into data frames
-    sum_dfnames = []
-    mean_dfnames = []
-    for channel in range(0,CHANNELS):
-        All_sumRatio[channel] = np.array(All_sumRatio[channel])
-        All_meanRatio[channel] = np.array(All_meanRatio[channel])
 
-        sum_dfnames.append(str("sum_Channel"+str(channel+1)))
-        mean_dfnames.append(str("mean_Channel"+str(channel+1)))
+    nuc_mean_dfnames = []
+    nuc_median_dfnames = []
+    nuc_size_dfnames = []
 
-    All_sumRatio = pd.DataFrame(data=All_sumRatio, index= sum_dfnames).T
+    cyto_mean_dfnames = []
+    cyto_median_dfnames = []
+    cyto_size_dfnames = []
 
-    All_meanRatio = pd.DataFrame(data=All_meanRatio, index= mean_dfnames).T
+    mean_Ratio_dfnames = []
+    median_Ratio_dfnames = []
 
-    Alldat = pd.concat([All_meanRatio, All_sumRatio], axis=1)
+    for channel in range(0,len(CHANNELS)):
+        All_nuc_mean[channel] = np.array(All_nuc_mean[channel])
+        All_nuc_median[channel] = np.array(All_nuc_median[channel])
+        All_nuc_size[channel] = np.array(All_nuc_size[channel])
 
+        All_cyto_mean[channel] = np.array(All_cyto_mean[channel])
+        All_cyto_median[channel] = np.array(All_cyto_median[channel])
+        All_cyto_size[channel] = np.array(All_cyto_size[channel])
+
+        All_mean_Ratio[channel] = np.array(All_mean_Ratio[channel])
+        All_median_Ratio[channel] = np.array(All_median_Ratio[channel])
+
+
+        nuc_mean_dfnames.append(str("nuc_mean_Channel"+str(CHANNELS[channel]+1)))
+        nuc_median_dfnames.append(str("nuc_median_Channel"+str(CHANNELS[channel]+1)))
+        nuc_size_dfnames.append(str("nuc_size_Channel"+str(CHANNELS[channel]+1)))
+
+        cyto_mean_dfnames.append(str("cyto_mean_Channel"+str(CHANNELS[channel]+1)))
+        cyto_median_dfnames.append(str("cyto_median_Channel"+str(CHANNELS[channel]+1)))
+        cyto_size_dfnames.append(str("cyto_size_Channel"+str(CHANNELS[channel]+1)))
+
+        mean_Ratio_dfnames.append(str("mean_Ratio_Channel"+str(CHANNELS[channel]+1)))
+        median_Ratio_dfnames.append(str("median_Ratio_Channel"+str(CHANNELS[channel]+1)))
+
+
+    All_nuc_mean = pd.DataFrame(data=All_nuc_mean, index= nuc_mean_dfnames).T
+    All_nuc_median = pd.DataFrame(data=All_nuc_median, index= nuc_median_dfnames).T
+    All_nuc_size = pd.DataFrame(data=All_nuc_size, index= nuc_size_dfnames).T
+
+    All_cyto_mean = pd.DataFrame(data=All_cyto_mean, index= cyto_mean_dfnames).T
+    All_cyto_median = pd.DataFrame(data=All_cyto_median, index= cyto_median_dfnames).T
+    All_cyto_size = pd.DataFrame(data=All_cyto_size, index= cyto_size_dfnames).T
+
+    All_mean_Ratio = pd.DataFrame(data=All_mean_Ratio, index= mean_Ratio_dfnames).T
+    All_median_Ratio = pd.DataFrame(data=All_median_Ratio, index= median_Ratio_dfnames).T
+
+    Alldat = pd.concat([All_nuc_mean, All_nuc_median, All_nuc_size, All_cyto_mean, All_cyto_median, All_cyto_size, All_mean_Ratio, All_median_Ratio], axis=1)
     Alldat.insert(0, "MaskID", MaskID)
 
     #save data
