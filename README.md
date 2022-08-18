@@ -54,7 +54,7 @@ Example output:
 <img src= "https://github.com/gharmange/CellQuant/blob/main/Images/DensityPlot_example.png" width="500" height="500">
 
 ```python
-makeCytoMask(nucPath)
+MakeCytoMask(nucPath)
 ```
 makeCytoMask generates a mask to sample the cytoplasm of cells based on a nuclear mask. The input to this function is the path to the nuclear mask file (nucPath) (input mask file should be a tif file where each mask has a unique intensity). The output is a tif file containing a cytoplasm mask with the same intensity value as its corresponding nuclear mask and will be in the same directory as the input mask file. (Function written by Shivani Nellore)
 
