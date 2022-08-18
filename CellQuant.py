@@ -317,7 +317,7 @@ def PlotDensity(path):
 ## Functions created by Shivani Nellore
 
 #create a ring around the nucleaus to be used as a proxy for a cytoplasm mask
-def makeCytoMask(nucPath):
+def MakeCytoMask(nucPath):
     # read in nuc mask
     nucMaskArray = tifffile.imread(nucPath)[0,...,0]
     nucMaskArray = nucMaskArray.astype("float32")
