@@ -1,5 +1,5 @@
 # CellQuant
-These functions use cell masks to help you learn about cells in an image.
+These functions use cell masks to help you learn about cells in an image. For example code running all the functions in CellQuant check out the example jupyter notebook file "CellQuantExample.ipynb" in this repository.
 
 (To generate cell masks you may want to check out: https://github.com/SydShafferLab/DeepCellHelper)
 
