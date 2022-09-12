@@ -7,6 +7,7 @@ import glob
 import tifffile
 import cv2 as cv
 from skimage import measure
+import skimage
 
 
 
@@ -94,33 +95,23 @@ def MaskPos(Mask_path):
         print("No Mask")
         exit()
 
-    # find the center point of each nucleus
+    # Get properties of masks
+    regions = skimage.measure.regionprops(Mask)
+
+    # find the center point of each nucleus and size
     X = []
     Y = []
-
-    UMASK = np.unique(Mask)[1:]
-    # Define funtion that rapidly gets all indicies
-    def get_indices_pandas(data):
-        d = data.ravel()
-        f = lambda x: np.unravel_index(x.index, data.shape)
-        return pd.Series(d).groupby(d).apply(f)
-
-    #get all indicies of nuclei
-    indicies = get_indices_pandas(Mask)
-
-    for msk in UMASK:
-        y, x = indicies[msk]
-        #y, x = np.where(NucMask == nuc)
-        X.append(np.mean(x))
-        Y.append(1-np.mean(y))
-
+    for region in regions:
+        X.append(region.centroid[1])
+        Y.append(1-region.centroid[0])
+        
     # export data
     X = np.array(X).reshape((len(X),1))
     Y = np.array(Y).reshape((len(Y),1))
 
     MaskDat = np.hstack((X,Y))
     MaskDat = pd.DataFrame(MaskDat, columns = ['X','Y'])
-    outpath =  Mask_path.split('_mask.tif')[0]
+    outpath = Mask_path.split('.tif')[0]
     outpath = str(outpath+'_Cellxy.csv')
     MaskDat.to_csv(outpath,index=False)
     return(MaskDat)
@@ -494,3 +485,38 @@ def CytoNucRatios(Image_path, Mask_path_Nuc, Mask_path_cyto,CHANNELS):
     outpath = str(outpath+'_CytoToNucratios.csv')
     Alldat.to_csv(outpath,index=False)
     return Alldat
+
+
+##function that finds center point of each mask given a mask tif file along with the size of the mask
+def NucMaskPosSize(Mask_path):
+
+    #load masks
+    if os.path.isfile(Mask_path):
+        Mask = tifffile.imread(Mask_path)
+    else:
+        print("No Mask")
+        exit()
+
+    # Get properties of masks
+    regions = skimage.measure.regionprops(Mask)
+    
+    # find the center point of each nucleus and size
+    X = []
+    Y = []
+    size = []
+    for region in regions:
+        X.append(region.centroid[1])
+        Y.append(1-region.centroid[0])
+        size.append(region.area)
+        
+    # export data
+    X = np.array(X).reshape((len(X),1))
+    Y = np.array(Y).reshape((len(Y),1))
+    size = np.array(size).reshape((len(size),1))
+
+    MaskDat = np.hstack((X,Y,size))
+    MaskDat = pd.DataFrame(MaskDat, columns = ['X','Y','Size'])
+    outpath =  Mask_path.split('.tif')[0]
+    outpath = str(outpath+'_CellxySize.csv')
+    MaskDat.to_csv(outpath,index=False)
+    return(MaskDat)
